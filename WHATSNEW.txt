@@ -1,0 +1,69 @@
+Release Announcements
+=====================
+
+This is the first pre release of Samba 4.25.  This is *not*
+intended for production environments and is designed for testing
+purposes only.  Please report any defects via the Samba bug reporting
+system at https://bugzilla.samba.org/.
+
+Samba 4.25 will be the next version of the Samba suite.
+
+
+UPGRADING
+=========
+
+
+NEW FEATURES/CHANGES
+====================
+
+JSON Audit logging
+------------------
+
+The two leading spaces before the opening '{' on JSON audit log lines have been
+removed. And any embedded new line characters '\n' are converted to spaces.
+
+Domain encryption types changed to AES by default
+-------------------------------------------------
+
+The default value of the smb.conf option ‘kdc default domain supported enctypes’
+now corresponds to ‘aes128-cts-hmac-sha1-96 aes256-cts-hmac-sha1-96’ (both AES
+encryption types) if the domain functional level is 2008 or higher. This
+addresses CVE-2026-20833.
+
+REMOVED FEATURES
+================
+
+
+smb.conf changes
+================
+
+  Parameter Name                          Description     Default
+  --------------                          -----------     -------
+  kdc default domain supported enctypes   New default     AES encryption types (if supported by domain)
+
+
+KNOWN ISSUES
+============
+
+https://wiki.samba.org/index.php/Release_Planning_for_Samba_4.25#Release_blocking_bugs
+
+
+#######################################
+Reporting bugs & Development Discussion
+#######################################
+
+Please discuss this release on the samba-technical mailing list or by
+joining the #samba-technical:matrix.org matrix room, or
+#samba-technical IRC channel on irc.libera.chat
+
+If you do report problems then please try to send high quality
+feedback. If you don't provide vital information to help us track down
+the problem then you will probably be ignored.  All bug reports should
+be filed under the Samba 4.1 and newer product in the project's Bugzilla
+database (https://bugzilla.samba.org/).
+
+
+======================================================================
+== Our Code, Our Bugs, Our Responsibility.
+== The Samba Team
+======================================================================
