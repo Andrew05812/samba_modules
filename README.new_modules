@@ -1,0 +1,37 @@
+# VFS recycle_bin Module
+
+VFS модуль `recycle_bin` сохраняет резервные копии удаляемых файлов.
+
+## Функциональность
+- Перехватывает удаление файлов через Samba
+- Сохраняет копии в `/var/samba/recycle_bin`
+- Добавляет временную метку к имени файла в формате `YYYYMMDD_HHMMSS`
+- Ведёт подробное логирование всех действий
+- Поддерживает настройку пути для бэкапов через конфиг Samba
+
+## Файлы модуля
+- `source3/modules/vfs_recycle_bin.c` - исходный код модуля
+- Модуль зарегистрирован в:
+  - `source3/wscript` - добавлен в список `default_shared_modules`
+  - `source3/modules/wscript_build` - добавлена секция сборки
+
+## Требования
+- Samba (собранная из исходников)
+- Права root для установки
+- Директория для бэкапов (создаётся автоматически)
+
+## Сборка и установка
+
+```bash
+# Клонирование репозитория
+git clone https://github.com/KitsuruDev/samba-modules.git
+cd samba-modules
+
+# Установка зависимостей (для Debian/Ubuntu)
+sudo apt install devscripts
+sudo ./bootstrap/generated-dists/debian12/bootstrap.sh
+
+# Конфигурация и сборка
+./configure
+make -j 2
+sudo make install
