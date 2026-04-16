@@ -671,3 +671,10 @@ bld.SAMBA3_MODULE('vfs_aio_ratelimit',
                  init_function='',
                  internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_aio_ratelimit'),
                  enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_aio_ratelimit'))
+
+bld.SAMBA3_MODULE('vfs_file_logger',
+                 subsystem='vfs',
+                 source='vfs_file_logger.c',
+                 init_function='vfs_file_logger_init',
+                 internal_module=bld.SAMBA3_IS_STATIC_MODULE('vfs_file_logger'),
+                 enabled=bld.SAMBA3_IS_ENABLED_MODULE('vfs_file_logger'))
