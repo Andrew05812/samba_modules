@@ -27,8 +27,11 @@ static struct file_state *file_states_head = NULL;
 static void log_operation(vfs_handle_struct *handle, const char *filepath, const char *action);
 static void remove_file_state(const char *filepath);
 static struct file_state* get_file_state(const char *filepath);
+static struct file_state* find_file_state(const char *filepath);
 static int was_file_written(struct file_state *state, const char *filepath);
+static int was_file_read(struct file_state *state, const char *filepath);
 static void update_file_attrs(struct file_state *state, const char *filepath);
+static void log_directory_nested_files(vfs_handle_struct *handle, const char *dir_path);
 
 static const char* get_current_user(vfs_handle_struct *handle)
 {
@@ -40,13 +43,29 @@ static const char* get_current_user(vfs_handle_struct *handle)
     return "unknown";
 }
 
-static char* resolve_full_path_from_dirfsp(vfs_handle_struct *handle,
-                                           const struct files_struct *dirfsp,
-                                           const struct smb_filename *smb_fname)
+static char* get_full_path(vfs_handle_struct *handle, const struct smb_filename *smb_fname)
+{
+    char *full_path = NULL;
+    const char *share_path = handle->conn->connectpath;
+
+    if (share_path && smb_fname && smb_fname->base_name) {
+        if (smb_fname->base_name[0] == '/') {
+            full_path = talloc_asprintf(talloc_tos(), "%s", smb_fname->base_name);
+        } else {
+            full_path = talloc_asprintf(talloc_tos(), "%s/%s", share_path, smb_fname->base_name);
+        }
+    }
+
+    return full_path;
+}
+
+static char* resolve_path(vfs_handle_struct *handle,
+                          const struct files_struct *dirfsp,
+                          const struct smb_filename *smb_fname)
 {
     struct smb_filename *full_fname = NULL;
     char *result = NULL;
-    NTSTATUS status;
+    const char *share_path = handle->conn->connectpath;
 
     if (smb_fname == NULL || smb_fname->base_name == NULL) {
         return NULL;
@@ -54,66 +73,54 @@ static char* resolve_full_path_from_dirfsp(vfs_handle_struct *handle,
 
     full_fname = full_path_from_dirfsp_atname(talloc_tos(), dirfsp, smb_fname);
     if (full_fname == NULL) {
-        const char *share_path = handle->conn->connectpath;
-        if (share_path) {
-            result = talloc_asprintf(talloc_tos(), "%s/%s",
-                                     share_path, smb_fname->base_name);
-        }
-        return result;
+        return get_full_path(handle, smb_fname);
     }
 
     if (full_fname->base_name[0] == '/') {
         result = talloc_strdup(talloc_tos(), full_fname->base_name);
-    } else {
-        const char *share_path = handle->conn->connectpath;
-        if (share_path) {
-            result = talloc_asprintf(talloc_tos(), "%s/%s",
-                                     share_path, full_fname->base_name);
-        }
+    } else if (share_path) {
+        result = talloc_asprintf(talloc_tos(), "%s/%s",
+                                 share_path, full_fname->base_name);
     }
 
     TALLOC_FREE(full_fname);
     return result;
 }
 
-static char* resolve_full_path_from_fsp(vfs_handle_struct *handle,
-                                        const struct files_struct *fsp)
+static char* resolve_mkdir_path(vfs_handle_struct *handle,
+                                struct files_struct *dirfsp,
+                                const struct smb_filename *smb_fname)
 {
-    struct smb_filename *smb_fname = NULL;
-    char *result = NULL;
+    const char *share_path = handle->conn->connectpath;
+    const char *base = smb_fname->base_name;
+    const char *dir_name;
 
-    if (fsp == NULL || fsp->fsp_name == NULL || fsp->fsp_name->base_name == NULL) {
+    if (base == NULL || share_path == NULL) {
         return NULL;
     }
 
-    smb_fname = fsp->fsp_name;
-
-    if (smb_fname->base_name[0] == '/') {
-        result = talloc_strdup(talloc_tos(), smb_fname->base_name);
+    if (strstr(base, "::TMPNAME") != NULL) {
+        const char *p = strrchr(base, ':');
+        dir_name = (p != NULL) ? p + 1 : base;
     } else {
-        const char *cwd = NULL;
-        if (fsp->conn && fsp->conn->cwd_fsp &&
-            fsp->conn->cwd_fsp->fsp_name &&
-            fsp->conn->cwd_fsp->fsp_name->base_name) {
-            cwd = fsp->conn->cwd_fsp->fsp_name->base_name;
-        }
-
-        if (cwd && !ISDOT(cwd)) {
-            const char *share_path = handle->conn->connectpath;
-            if (share_path) {
-                result = talloc_asprintf(talloc_tos(), "%s/%s/%s",
-                                         share_path, cwd, smb_fname->base_name);
-            }
-        } else {
-            const char *share_path = handle->conn->connectpath;
-            if (share_path) {
-                result = talloc_asprintf(talloc_tos(), "%s/%s",
-                                         share_path, smb_fname->base_name);
-            }
-        }
+        dir_name = base;
     }
 
-    return result;
+    if (dir_name[0] == '/') {
+        return talloc_strdup(talloc_tos(), dir_name);
+    }
+
+    if (dirfsp == dirfsp->conn->cwd_fsp ||
+        (dirfsp->fsp_name && ISDOT(dirfsp->fsp_name->base_name))) {
+        return talloc_asprintf(talloc_tos(), "%s/%s", share_path, dir_name);
+    }
+
+    if (dirfsp->fsp_name && dirfsp->fsp_name->base_name) {
+        return talloc_asprintf(talloc_tos(), "%s/%s/%s",
+                              share_path, dirfsp->fsp_name->base_name, dir_name);
+    }
+
+    return talloc_asprintf(talloc_tos(), "%s/%s", share_path, dir_name);
 }
 
 static const char* get_log_path(vfs_handle_struct *handle)
@@ -200,7 +207,7 @@ static int is_text_file(const char *filename)
     return 0;
 }
 
-static struct file_state* get_file_state(const char *filepath)
+static struct file_state* find_file_state(const char *filepath)
 {
     struct file_state *cur = file_states_head;
     while (cur) {
@@ -208,6 +215,15 @@ static struct file_state* get_file_state(const char *filepath)
             return cur;
         }
         cur = cur->next;
+    }
+    return NULL;
+}
+
+static struct file_state* get_file_state(const char *filepath)
+{
+    struct file_state *existing = find_file_state(filepath);
+    if (existing) {
+        return existing;
     }
 
     struct file_state *new_state = (struct file_state *)malloc(sizeof(struct file_state));
@@ -280,7 +296,7 @@ static void log_directory_nested_files(vfs_handle_struct *handle, const char *di
             log_operation(handle, entry_path, "DirDelete");
             remove_file_state(entry_path);
         } else if (S_ISREG(st.st_mode)) {
-            struct file_state *state = get_file_state(entry_path);
+            struct file_state *state = find_file_state(entry_path);
             if (state && state->open_count > 0 && was_file_written(state, entry_path)) {
                 log_operation(handle, entry_path, "Write");
                 update_file_attrs(state, entry_path);
@@ -495,10 +511,8 @@ static int file_logger_openat(vfs_handle_struct *handle,
     char *full_path = NULL;
     struct stat st;
 
-    result = SMB_VFS_NEXT_OPENAT(handle, dirfsp, smb_fname, fsp, how);
-
     if (smb_fname && smb_fname->base_name && is_text_file(smb_fname->base_name)) {
-        full_path = resolve_full_path_from_fsp(handle, fsp);
+        full_path = resolve_path(handle, dirfsp, smb_fname);
         if (full_path) {
             struct file_state *state = get_file_state(full_path);
             if (state) {
@@ -517,6 +531,7 @@ static int file_logger_openat(vfs_handle_struct *handle,
         }
     }
 
+    result = SMB_VFS_NEXT_OPENAT(handle, dirfsp, smb_fname, fsp, how);
     return result;
 }
 
@@ -525,13 +540,11 @@ static int file_logger_close(vfs_handle_struct *handle, struct files_struct *fsp
     int result;
     char *full_path = NULL;
 
-    result = SMB_VFS_NEXT_CLOSE(handle, fsp);
-
     if (fsp && fsp->fsp_name && fsp->fsp_name->base_name &&
         is_text_file(fsp->fsp_name->base_name)) {
-        full_path = resolve_full_path_from_fsp(handle, fsp);
+        full_path = get_full_path(handle, fsp->fsp_name);
         if (full_path) {
-            struct file_state *state = get_file_state(full_path);
+            struct file_state *state = find_file_state(full_path);
 
             if (state && state->open_count > 0) {
                 state->open_count--;
@@ -552,6 +565,7 @@ static int file_logger_close(vfs_handle_struct *handle, struct files_struct *fsp
         }
     }
 
+    result = SMB_VFS_NEXT_CLOSE(handle, fsp);
     return result;
 }
 
@@ -564,7 +578,7 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
     char *full_path = NULL;
 
     if (smb_fname && smb_fname->base_name) {
-        full_path = resolve_full_path_from_dirfsp(handle, dirfsp, smb_fname);
+        full_path = resolve_path(handle, dirfsp, smb_fname);
         if (full_path) {
             if (flags & AT_REMOVEDIR) {
                 log_directory_nested_files(handle, full_path);
@@ -599,7 +613,7 @@ static int file_logger_mkdirat(vfs_handle_struct *handle,
     result = SMB_VFS_NEXT_MKDIRAT(handle, dirfsp, smb_fname, mode);
 
     if (smb_fname && smb_fname->base_name) {
-        full_path = resolve_full_path_from_dirfsp(handle, dirfsp, smb_fname);
+        full_path = resolve_mkdir_path(handle, dirfsp, smb_fname);
         if (full_path) {
             log_operation(handle, full_path, "MkDir");
             TALLOC_FREE(full_path);
@@ -620,7 +634,7 @@ static int file_logger_symlinkat(vfs_handle_struct *handle,
     result = SMB_VFS_NEXT_SYMLINKAT(handle, link_contents, dirfsp, new_smb_fname);
 
     if (new_smb_fname && new_smb_fname->base_name) {
-        full_path = resolve_full_path_from_dirfsp(handle, dirfsp, new_smb_fname);
+        full_path = resolve_path(handle, dirfsp, new_smb_fname);
         if (full_path) {
             log_operation(handle, full_path, "SymlinkCreate");
             TALLOC_FREE(full_path);
@@ -642,7 +656,7 @@ static int file_logger_readlinkat(vfs_handle_struct *handle,
     result = SMB_VFS_NEXT_READLINKAT(handle, dirfsp, smb_fname, buf, bufsiz);
 
     if (smb_fname && smb_fname->base_name) {
-        full_path = resolve_full_path_from_dirfsp(handle, dirfsp, smb_fname);
+        full_path = resolve_path(handle, dirfsp, smb_fname);
         if (full_path) {
             log_operation(handle, full_path, "SymlinkRead");
             TALLOC_FREE(full_path);
