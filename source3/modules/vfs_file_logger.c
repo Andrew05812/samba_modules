@@ -19,6 +19,8 @@ struct file_state {
 	time_t last_delete_time;
 	int open_sequence;
 	int is_new_file;
+	int was_opened_for_read;
+	int was_opened_for_write;
 	struct file_state *next;
 };
 
@@ -579,6 +581,14 @@ static int file_logger_openat(vfs_handle_struct *handle,
 						state->is_new_file = 0;
 					}
 					update_file_attrs(state, full_path);
+					state->was_opened_for_read = 0;
+					state->was_opened_for_write = 0;
+				}
+				if (how->flags & O_WRONLY || how->flags & O_RDWR) {
+					state->was_opened_for_write = 1;
+				}
+				if (!(how->flags & O_WRONLY)) {
+					state->was_opened_for_read = 1;
 				}
 				state->open_count++;
 				log_operation(handle, full_path, "Open");
@@ -607,12 +617,11 @@ static int file_logger_close(vfs_handle_struct *handle,
 			if (state && state->open_count > 0) {
 				state->open_count--;
 
-				if (was_file_written(state, full_path)) {
+				if (state->was_opened_for_write) {
 					log_operation(handle, full_path,
 						      "Write");
-					update_file_attrs(state, full_path);
 				}
-				else if (was_file_read(state, full_path)) {
+				else if (state->was_opened_for_read) {
 					log_operation(handle, full_path,
 						      "Read");
 				}
