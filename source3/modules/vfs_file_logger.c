@@ -568,6 +568,10 @@ static int file_logger_openat(vfs_handle_struct *handle,
 	struct stat st;
 	struct file_state *state = NULL;
 
+	DEBUG(0, ("FILE_LOGGER_OPENAT: base_name=[%s] flags=0x%x\n",
+		  smb_fname ? smb_fname->base_name : "NULL",
+		  how ? how->flags : 0));
+
 	if (smb_fname && smb_fname->base_name &&
 	    is_text_file(smb_fname->base_name)) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
@@ -607,6 +611,10 @@ static int file_logger_close(vfs_handle_struct *handle,
 	int result;
 	char *full_path = NULL;
 	struct file_state *state = NULL;
+
+	DEBUG(0, ("FILE_LOGGER_CLOSE: base_name=[%s]\n",
+		  (fsp && fsp->fsp_name && fsp->fsp_name->base_name) ?
+		  fsp->fsp_name->base_name : "NULL"));
 
 	if (fsp && fsp->fsp_name && fsp->fsp_name->base_name &&
 	    is_text_file(fsp->fsp_name->base_name)) {
