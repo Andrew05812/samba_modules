@@ -467,7 +467,20 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	}
 
 	filepath_line = talloc_asprintf(talloc_tos(), "FILE- %s\n", filepath);
-	block_start = strstr(existing_content, filepath_line);
+
+	block_start = NULL;
+	if (strncmp(existing_content, filepath_line,
+		    strlen(filepath_line)) == 0) {
+		block_start = existing_content;
+	} else {
+		char *sep = talloc_asprintf(talloc_tos(), "\n\n\n%s",
+					    filepath_line);
+		char *found = strstr(existing_content, sep);
+		if (found) {
+			block_start = found + 3;
+		}
+		TALLOC_FREE(sep);
+	}
 
 	if (block_start != NULL) {
 		search_start = block_start + strlen(filepath_line);
