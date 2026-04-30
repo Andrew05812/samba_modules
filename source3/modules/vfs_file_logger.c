@@ -80,7 +80,8 @@ static char* resolve_path(vfs_handle_struct *handle,
 
 	full_fname = full_path_from_dirfsp_atname(talloc_tos(), dirfsp,
 						  smb_fname);
-	if (full_fname == NULL) {
+	if (full_fname == NULL || full_fname->base_name == NULL) {
+		TALLOC_FREE(full_fname);
 		return get_full_path(handle, smb_fname);
 	}
 
