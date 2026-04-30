@@ -17,6 +17,8 @@ struct file_state {
 	time_t last_read_time;
 	time_t last_write_time;
 	time_t last_delete_time;
+	time_t last_dir_time;
+	time_t last_symlink_time;
 	int open_sequence;
 	int is_new_file;
 	struct file_state *next;
@@ -361,14 +363,16 @@ static int is_duplicate_operation(struct file_state *state,
 	} else if (strcmp(action, "Delete") == 0) {
 		if (state->last_delete_time == now) return 1;
 		state->last_delete_time = now;
-	} else if (strcmp(action, "DirDelete") == 0 ||
-		   strcmp(action, "MkDir") == 0 ||
-		   strcmp(action, "SymlinkCreate") == 0 ||
-		   strcmp(action, "SymlinkRead") == 0 ||
-		   strcmp(action, "SymlinkDelete") == 0) {
-		if (state->last_delete_time == now) return 1;
-		state->last_delete_time = now;
-	}
+    } else if (strcmp(action, "MkDir") == 0 ||
+               strcmp(action, "DirDelete") == 0) {
+        if (state->last_dir_time == now) return 1;
+        state->last_dir_time = now;
+    } else if (strcmp(action, "SymlinkCreate") == 0 ||
+               strcmp(action, "SymlinkRead") == 0 ||
+               strcmp(action, "SymlinkDelete") == 0) {
+        if (state->last_symlink_time == now) return 1;
+        state->last_symlink_time = now;
+    }
 
 	return 0;
 }
@@ -636,10 +640,6 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
 	int result;
 	char *full_path = NULL;
 	struct stat st;
-
-	DEBUG(0, ("FILE_LOGGER_UNLINKAT: base_name=[%s] flags=0x%x AT_REMOVEDIR=%d\n",
-		  smb_fname ? smb_fname->base_name : "NULL",
-		  flags, (flags & AT_REMOVEDIR) ? 1 : 0));
 
 	if (smb_fname && smb_fname->base_name) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
