@@ -403,6 +403,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	int fd = -1;
 	int open_count = 0, read_count = 0, write_count = 0;
 	ssize_t bytes_read = 0;
+	ssize_t total_read = 0;
 	struct stat log_st;
 	const char *log_path;
 	const char *user;
@@ -434,7 +435,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 				    "datetime=%s\tuser=%s\taction=%s\n",
 				    current_time, user, action);
 
-	DEBUG(0, ("FILE_LOGGER: %s - %s\n", action, filepath));
+	DEBUG(0, ("FILE_LOGGER: [pid=%d] %s - %s\n", (int)getpid(), action, filepath));
 
 	fd = open(log_path, O_RDWR | O_CREAT, 0644);
 	if (fd == -1) {
@@ -454,10 +455,15 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 		existing_content = talloc_size(talloc_tos(),
 					       log_st.st_size + 1);
 		if (existing_content) {
-			bytes_read = read(fd, existing_content,
-					  log_st.st_size);
-			if (bytes_read > 0) {
-				existing_content[bytes_read] = '\0';
+			total_read = 0;
+			while (total_read < log_st.st_size) {
+				bytes_read = read(fd, existing_content + total_read,
+						  log_st.st_size - total_read);
+				if (bytes_read <= 0) break;
+				total_read += bytes_read;
+			}
+			if (total_read > 0) {
+				existing_content[total_read] = '\0';
 			}
 		}
 	}
@@ -484,11 +490,11 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 
 	if (block_start != NULL) {
 		search_start = block_start + strlen(filepath_line);
-		block_end = strstr(search_start, "\n\n\n");
-		if (block_end == NULL) {
-			block_end = existing_content + strlen(existing_content);
-		} else {
+		block_end = strstr(search_start, "\n\n\nFILE- ");
+		if (block_end != NULL) {
 			block_end += 3;
+		} else {
+			block_end = existing_content + strlen(existing_content);
 		}
 
 		summary_start = strchr(block_start, '\n');
@@ -557,7 +563,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 
 		if (existing_content[0] != '\0') {
 			final_content = talloc_asprintf(talloc_tos(),
-				"%s\n\n\nFILE- %s\nSUMMARY OPERATIONS: Open - %d, Read - %d, Write - %d\nLOGS:\n%s",
+				"%s\n\nFILE- %s\nSUMMARY OPERATIONS: Open - %d, Read - %d, Write - %d\nLOGS:\n%s",
 				existing_content, filepath,
 				init_open, init_read, init_write,
 				log_entry);
