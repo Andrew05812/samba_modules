@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <dirent.h>
-#include <limits.h>
+#include <sys/file.h>
 
 struct file_state {
 	char *filepath;
@@ -380,18 +380,6 @@ static int is_duplicate_operation(struct file_state *state,
 	return 0;
 }
 
-static void update_log_file(const char *log_path, const char *new_content)
-{
-	int fd = open(log_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
-	if (fd != -1) {
-		write(fd, new_content, strlen(new_content));
-		close(fd);
-	} else {
-		DEBUG(0, ("FILE_LOGGER: ERROR - cannot write to log file %s: %s\n",
-			  log_path, strerror(errno)));
-	}
-}
-
 static void log_operation(vfs_handle_struct *handle, const char *filepath,
 			  const char *action)
 {
@@ -448,20 +436,30 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 
 	DEBUG(0, ("FILE_LOGGER: %s - %s\n", action, filepath));
 
-	fd = open(log_path, O_RDONLY);
-	if (fd != -1) {
-		if (fstat(fd, &log_st) == 0 && log_st.st_size > 0) {
-			existing_content = talloc_size(talloc_tos(),
-						       log_st.st_size + 1);
-			if (existing_content) {
-				bytes_read = read(fd, existing_content,
-						  log_st.st_size);
-				if (bytes_read > 0) {
-					existing_content[bytes_read] = '\0';
-				}
+	fd = open(log_path, O_RDWR | O_CREAT, 0644);
+	if (fd == -1) {
+		DEBUG(0, ("FILE_LOGGER: ERROR - cannot open log file %s: %s\n",
+			  log_path, strerror(errno)));
+		goto done;
+	}
+
+	if (flock(fd, LOCK_EX) != 0) {
+		DEBUG(0, ("FILE_LOGGER: ERROR - cannot lock log file %s: %s\n",
+			  log_path, strerror(errno)));
+		close(fd);
+		goto done;
+	}
+
+	if (fstat(fd, &log_st) == 0 && log_st.st_size > 0) {
+		existing_content = talloc_size(talloc_tos(),
+					       log_st.st_size + 1);
+		if (existing_content) {
+			bytes_read = read(fd, existing_content,
+					  log_st.st_size);
+			if (bytes_read > 0) {
+				existing_content[bytes_read] = '\0';
 			}
 		}
-		close(fd);
 	}
 
 	if (!existing_content) {
@@ -552,9 +550,21 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	}
 
 	if (final_content) {
-		update_log_file(log_path, final_content);
+		if (lseek(fd, 0, SEEK_SET) != 0) {
+			DEBUG(0, ("FILE_LOGGER: ERROR - cannot seek: %s\n",
+				  strerror(errno)));
+		}
+		if (ftruncate(fd, 0) != 0) {
+			DEBUG(0, ("FILE_LOGGER: ERROR - cannot truncate: %s\n",
+				  strerror(errno)));
+		}
+		write(fd, final_content, strlen(final_content));
 	}
 
+	flock(fd, LOCK_UN);
+	close(fd);
+
+done:
 	TALLOC_FREE(current_time);
 	TALLOC_FREE(log_entry);
 	TALLOC_FREE(existing_content);
