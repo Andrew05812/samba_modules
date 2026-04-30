@@ -16,6 +16,8 @@ static int recycle_bin_unlinkat(vfs_handle_struct *handle,
     char buffer[8192];
     ssize_t nread;
     int ret = 0;
+    time_t now;
+    struct tm *tm_info;
     
     /* Получаем путь для бэкапа из конфига */
     backup_path = lp_parm_const_string(SNUM(handle->conn), "recycle_bin", "backup_path", 
@@ -35,8 +37,8 @@ static int recycle_bin_unlinkat(vfs_handle_struct *handle,
     DEBUG(0, ("RECYCLE BIN: filename = %s\n", filename_only));
     
     /* Создаем временную метку */
-    time_t now = time(NULL);
-    struct tm *tm_info = localtime(&now);
+    now = time(NULL);
+    tm_info = localtime(&now);
     timestamp = talloc_asprintf(talloc_tos(), "%04d%02d%02d_%02d%02d%02d",
                                 tm_info->tm_year + 1900,
                                 tm_info->tm_mon + 1,
