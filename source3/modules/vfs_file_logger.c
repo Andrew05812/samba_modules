@@ -19,8 +19,6 @@ struct file_state {
 	time_t last_delete_time;
 	int open_sequence;
 	int is_new_file;
-	int was_opened_for_read;
-	int was_opened_for_write;
 	struct file_state *next;
 };
 
@@ -568,10 +566,6 @@ static int file_logger_openat(vfs_handle_struct *handle,
 	struct stat st;
 	struct file_state *state = NULL;
 
-	DEBUG(0, ("FILE_LOGGER_OPENAT: base_name=[%s] flags=0x%x\n",
-		  smb_fname ? smb_fname->base_name : "NULL",
-		  how ? how->flags : 0));
-
 	if (smb_fname && smb_fname->base_name &&
 	    is_text_file(smb_fname->base_name)) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
@@ -585,14 +579,6 @@ static int file_logger_openat(vfs_handle_struct *handle,
 						state->is_new_file = 0;
 					}
 					update_file_attrs(state, full_path);
-					state->was_opened_for_read = 0;
-					state->was_opened_for_write = 0;
-				}
-				if (how->flags & O_WRONLY || how->flags & O_RDWR) {
-					state->was_opened_for_write = 1;
-				}
-				if (!(how->flags & O_WRONLY)) {
-					state->was_opened_for_read = 1;
 				}
 				state->open_count++;
 				log_operation(handle, full_path, "Open");
@@ -612,10 +598,6 @@ static int file_logger_close(vfs_handle_struct *handle,
 	char *full_path = NULL;
 	struct file_state *state = NULL;
 
-	DEBUG(0, ("FILE_LOGGER_CLOSE: base_name=[%s]\n",
-		  (fsp && fsp->fsp_name && fsp->fsp_name->base_name) ?
-		  fsp->fsp_name->base_name : "NULL"));
-
 	if (fsp && fsp->fsp_name && fsp->fsp_name->base_name &&
 	    is_text_file(fsp->fsp_name->base_name)) {
 		full_path = get_full_path(handle, fsp->fsp_name);
@@ -625,11 +607,11 @@ static int file_logger_close(vfs_handle_struct *handle,
 			if (state && state->open_count > 0) {
 				state->open_count--;
 
-				if (state->was_opened_for_write) {
+				if (fsp->access_mask & FILE_WRITE_DATA) {
 					log_operation(handle, full_path,
 						      "Write");
 				}
-				else if (state->was_opened_for_read) {
+				else if (fsp->access_mask & FILE_READ_DATA) {
 					log_operation(handle, full_path,
 						      "Read");
 				}
