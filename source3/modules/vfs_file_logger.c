@@ -607,11 +607,11 @@ static int file_logger_close(vfs_handle_struct *handle,
 			if (state && state->open_count > 0) {
 				state->open_count--;
 
-				if (fsp->access_mask & FILE_WRITE_DATA) {
+				if (fsp->access_mask & SEC_FILE_WRITE_DATA) {
 					log_operation(handle, full_path,
 						      "Write");
 				}
-				else if (fsp->access_mask & FILE_READ_DATA) {
+				else if (fsp->access_mask & SEC_FILE_READ_DATA) {
 					log_operation(handle, full_path,
 						      "Read");
 				}
