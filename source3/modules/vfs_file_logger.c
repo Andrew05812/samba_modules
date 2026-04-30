@@ -527,11 +527,19 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 								   log_entry);
 				}
 
+				if (after_block && after_block[0] != '\0') {
 				final_content = talloc_asprintf(talloc_tos(),
-					"%sFILE- %s\nSUMMARY OPERATIONS: Open - %d, Read - %d, Write - %d\n%s%s",
+					"%sFILE- %s\nSUMMARY OPERATIONS: Open - %d, Read - %d, Write - %d\n%s\n\n%s",
 					before_block, filepath,
 					open_count, read_count, write_count,
 					new_logs, after_block);
+			} else {
+				final_content = talloc_asprintf(talloc_tos(),
+					"%sFILE- %s\nSUMMARY OPERATIONS: Open - %d, Read - %d, Write - %d\n%s",
+					before_block, filepath,
+					open_count, read_count, write_count,
+					new_logs);
+			}
 
 				TALLOC_FREE(before_block);
 				TALLOC_FREE(after_block);
