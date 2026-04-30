@@ -17,7 +17,8 @@ struct file_state {
 	time_t last_read_time;
 	time_t last_write_time;
 	time_t last_delete_time;
-	time_t last_dir_time;
+	time_t last_mkdir_time;
+	time_t last_dirdelete_time;
 	time_t last_symlink_time;
 	int open_sequence;
 	int is_new_file;
@@ -363,10 +364,12 @@ static int is_duplicate_operation(struct file_state *state,
 	} else if (strcmp(action, "Delete") == 0) {
 		if (state->last_delete_time == now) return 1;
 		state->last_delete_time = now;
-    } else if (strcmp(action, "MkDir") == 0 ||
-               strcmp(action, "DirDelete") == 0) {
-        if (state->last_dir_time == now) return 1;
-        state->last_dir_time = now;
+    } else if (strcmp(action, "MkDir") == 0) {
+        if (state->last_mkdir_time == now) return 1;
+        state->last_mkdir_time = now;
+    } else if (strcmp(action, "DirDelete") == 0) {
+        if (state->last_dirdelete_time == now) return 1;
+        state->last_dirdelete_time = now;
     } else if (strcmp(action, "SymlinkCreate") == 0 ||
                strcmp(action, "SymlinkRead") == 0 ||
                strcmp(action, "SymlinkDelete") == 0) {
