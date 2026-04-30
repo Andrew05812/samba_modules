@@ -637,6 +637,10 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
 	char *full_path = NULL;
 	struct stat st;
 
+	DEBUG(0, ("FILE_LOGGER_UNLINKAT: base_name=[%s] flags=0x%x AT_REMOVEDIR=%d\n",
+		  smb_fname ? smb_fname->base_name : "NULL",
+		  flags, (flags & AT_REMOVEDIR) ? 1 : 0));
+
 	if (smb_fname && smb_fname->base_name) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
 		if (full_path) {
