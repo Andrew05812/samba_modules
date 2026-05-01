@@ -634,6 +634,10 @@ static int file_logger_openat(vfs_handle_struct *handle,
 	struct stat st;
 	struct file_state *state = NULL;
 
+	DEBUG(0, ("FILE_LOGGER: [pid=%d] ENTER openat base_name=[%s]\n",
+		  (int)getpid(),
+		  smb_fname && smb_fname->base_name ? smb_fname->base_name : "NULL"));
+
 	if (smb_fname && smb_fname->base_name &&
 	    is_text_file(smb_fname->base_name)) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
