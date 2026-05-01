@@ -498,12 +498,16 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	if (strncmp(existing_content, filepath_line,
 		    strlen(filepath_line)) == 0) {
 		block_start = existing_content;
+		DEBUG(0, ("FILE_LOGGER: [pid=%d] FOUND block at START for '%s'\n", (int)getpid(), filepath));
 	} else {
 		char *sep = talloc_asprintf(talloc_tos(), "\n\n\n%s",
 					    filepath_line);
 		char *found = strstr(existing_content, sep);
 		if (found) {
 			block_start = found + 3;
+			DEBUG(0, ("FILE_LOGGER: [pid=%d] FOUND block at offset %d for '%s'\n", (int)getpid(), (int)(found - existing_content), filepath));
+		} else {
+			DEBUG(0, ("FILE_LOGGER: [pid=%d] NOT FOUND block for '%s' content_len=%d first50=[%.50s]\n", (int)getpid(), filepath, (int)strlen(existing_content), existing_content));
 		}
 		TALLOC_FREE(sep);
 	}
