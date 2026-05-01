@@ -405,7 +405,6 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	char *current_time = NULL;
 	time_t now = time(NULL);
 	struct tm *tm_info = localtime(&now);
-	(void)tm_info;
 	char *existing_content = NULL;
 	char *final_content = NULL;
 	char *filepath_line = NULL;
