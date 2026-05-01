@@ -631,6 +631,8 @@ static int file_logger_openat(vfs_handle_struct *handle,
 {
 	int result;
 	char *full_path = NULL;
+	struct stat st;
+	struct file_state *state = NULL;
 
 	result = SMB_VFS_NEXT_OPENAT(handle, dirfsp, smb_fname, fsp, how);
 
@@ -638,7 +640,19 @@ static int file_logger_openat(vfs_handle_struct *handle,
 	    is_text_file(smb_fname->base_name)) {
 		full_path = resolve_path(handle, dirfsp, smb_fname);
 		if (full_path) {
-			DEBUG(0, ("FILE_LOGGER: [pid=%d] openat path=%s\n", (int)getpid(), full_path));
+			state = get_file_state(full_path);
+			if (state) {
+				if (state->open_count == 0) {
+					if (stat(full_path, &st) != 0) {
+						state->is_new_file = 1;
+					} else {
+						state->is_new_file = 0;
+					}
+					update_file_attrs(state, full_path);
+				}
+				state->open_count++;
+				log_operation(handle, full_path, "Open");
+			}
 			TALLOC_FREE(full_path);
 		}
 	}
@@ -649,7 +663,39 @@ static int file_logger_openat(vfs_handle_struct *handle,
 static int file_logger_close(vfs_handle_struct *handle,
 			     struct files_struct *fsp)
 {
-	return SMB_VFS_NEXT_CLOSE(handle, fsp);
+	int result;
+	char *full_path = NULL;
+	struct file_state *state = NULL;
+
+	result = SMB_VFS_NEXT_CLOSE(handle, fsp);
+
+	if (fsp && fsp->fsp_name && fsp->fsp_name->base_name &&
+	    is_text_file(fsp->fsp_name->base_name)) {
+		full_path = get_full_path(handle, fsp->fsp_name);
+		if (full_path) {
+			state = find_file_state(full_path);
+
+			if (state && state->open_count > 0) {
+				state->open_count--;
+
+				if (fsp->access_mask & SEC_FILE_WRITE_DATA) {
+					log_operation(handle, full_path,
+						      "Write");
+				}
+				else if (fsp->access_mask & SEC_FILE_READ_DATA) {
+					log_operation(handle, full_path,
+						      "Read");
+				}
+
+				if (state->open_count == 0) {
+					remove_file_state(full_path);
+				}
+			}
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static int file_logger_unlinkat(vfs_handle_struct *handle,
