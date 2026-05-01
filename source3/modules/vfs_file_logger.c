@@ -50,7 +50,13 @@ static const char* get_current_user(vfs_handle_struct *handle)
 static char* get_full_path(vfs_handle_struct *handle, const struct smb_filename *smb_fname)
 {
 	char *full_path = NULL;
-	const char *share_path = handle->conn->connectpath;
+	const char *share_path;
+
+	if (handle == NULL || handle->conn == NULL) {
+		return NULL;
+	}
+
+	share_path = handle->conn->connectpath;
 
 	if (share_path && smb_fname && smb_fname->base_name) {
 		if (smb_fname->base_name[0] == '/') {
@@ -72,11 +78,14 @@ static char* resolve_path(vfs_handle_struct *handle,
 {
 	struct smb_filename *full_fname = NULL;
 	char *result = NULL;
-	const char *share_path = handle->conn->connectpath;
+	const char *share_path;
 
-	if (smb_fname == NULL || smb_fname->base_name == NULL) {
+	if (handle == NULL || handle->conn == NULL ||
+	    smb_fname == NULL || smb_fname->base_name == NULL) {
 		return NULL;
 	}
+
+	share_path = handle->conn->connectpath;
 
 	full_fname = full_path_from_dirfsp_atname(talloc_tos(), dirfsp,
 						  smb_fname);
@@ -100,12 +109,20 @@ static char* resolve_mkdir_path(vfs_handle_struct *handle,
 				struct files_struct *dirfsp,
 				const struct smb_filename *smb_fname)
 {
-	const char *share_path = handle->conn->connectpath;
-	const char *base = smb_fname->base_name;
+	const char *share_path;
+	const char *base;
 	const char *dir_name;
 	const char *p;
 
-	if (base == NULL || share_path == NULL) {
+	if (handle == NULL || handle->conn == NULL ||
+	    smb_fname == NULL || smb_fname->base_name == NULL) {
+		return NULL;
+	}
+
+	share_path = handle->conn->connectpath;
+	base = smb_fname->base_name;
+
+	if (share_path == NULL) {
 		return NULL;
 	}
 
@@ -388,6 +405,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	char *current_time = NULL;
 	time_t now = time(NULL);
 	struct tm *tm_info = localtime(&now);
+	(void)tm_info;
 	char *existing_content = NULL;
 	char *final_content = NULL;
 	char *filepath_line = NULL;
@@ -415,13 +433,15 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	user = get_current_user(handle);
 	state = get_file_state(filepath);
 
-	if (!state) return;
+	if (!state || !log_path || !filepath) return;
 
 	if (is_duplicate_operation(state, action, now)) {
 		DEBUG(10, ("FILE_LOGGER: Skipping duplicate %s for %s\n",
 			   action, filepath));
 		return;
 	}
+
+	if (!tm_info) goto done;
 
 	current_time = talloc_asprintf(talloc_tos(),
 				      "%04d-%02d-%02d %02d:%02d:%02d",
