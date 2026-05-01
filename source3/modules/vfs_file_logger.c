@@ -601,6 +601,10 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 	}
 
 	if (final_content) {
+		size_t total_len = strlen(final_content);
+		ssize_t written = 0;
+		ssize_t total_written = 0;
+
 		if (lseek(fd, 0, SEEK_SET) != 0) {
 			DEBUG(0, ("FILE_LOGGER: ERROR - cannot seek: %s\n",
 				  strerror(errno)));
@@ -609,7 +613,16 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 			DEBUG(0, ("FILE_LOGGER: ERROR - cannot truncate: %s\n",
 				  strerror(errno)));
 		}
-		write(fd, final_content, strlen(final_content));
+		while (total_written < (ssize_t)total_len) {
+			written = write(fd, final_content + total_written,
+					total_len - total_written);
+			if (written <= 0) break;
+			total_written += written;
+		}
+		if (total_written != (ssize_t)total_len) {
+			DEBUG(0, ("FILE_LOGGER: ERROR - partial write %d/%d\n",
+				  (int)total_written, (int)total_len));
+		}
 	}
 
 	flock(fd, LOCK_UN);
