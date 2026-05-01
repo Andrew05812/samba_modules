@@ -629,8 +629,21 @@ static int file_logger_openat(vfs_handle_struct *handle,
 			      struct files_struct *fsp,
 			      const struct vfs_open_how *how)
 {
-	DEBUG(0, ("FILE_LOGGER: [pid=%d] ENTER openat\n", (int)getpid()));
-	return SMB_VFS_NEXT_OPENAT(handle, dirfsp, smb_fname, fsp, how);
+	int result;
+	char *full_path = NULL;
+
+	result = SMB_VFS_NEXT_OPENAT(handle, dirfsp, smb_fname, fsp, how);
+
+	if (smb_fname && smb_fname->base_name &&
+	    is_text_file(smb_fname->base_name)) {
+		full_path = resolve_path(handle, dirfsp, smb_fname);
+		if (full_path) {
+			DEBUG(0, ("FILE_LOGGER: [pid=%d] openat path=%s\n", (int)getpid(), full_path));
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static int file_logger_close(vfs_handle_struct *handle,
