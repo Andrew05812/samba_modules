@@ -703,7 +703,36 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
 				const struct smb_filename *smb_fname,
 				int flags)
 {
-	return SMB_VFS_NEXT_UNLINKAT(handle, dirfsp, smb_fname, flags);
+	int result;
+	char *full_path = NULL;
+	struct stat st;
+
+	result = SMB_VFS_NEXT_UNLINKAT(handle, dirfsp, smb_fname, flags);
+
+	if (smb_fname && smb_fname->base_name) {
+		full_path = resolve_path(handle, dirfsp, smb_fname);
+		if (full_path) {
+			if (flags & AT_REMOVEDIR) {
+				log_directory_nested_files(handle, full_path);
+				log_operation(handle, full_path, "DirDelete");
+				remove_file_state(full_path);
+			} else {
+				if (lstat(full_path, &st) == 0 &&
+				    S_ISLNK(st.st_mode)) {
+					log_operation(handle, full_path,
+						      "SymlinkDelete");
+					remove_file_state(full_path);
+				} else if (is_text_file(smb_fname->base_name)) {
+					log_operation(handle, full_path,
+						      "Delete");
+					remove_file_state(full_path);
+				}
+			}
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static int file_logger_mkdirat(vfs_handle_struct *handle,
@@ -711,7 +740,20 @@ static int file_logger_mkdirat(vfs_handle_struct *handle,
 			       const struct smb_filename *smb_fname,
 			       mode_t mode)
 {
-	return SMB_VFS_NEXT_MKDIRAT(handle, dirfsp, smb_fname, mode);
+	int result;
+	char *full_path = NULL;
+
+	result = SMB_VFS_NEXT_MKDIRAT(handle, dirfsp, smb_fname, mode);
+
+	if (smb_fname && smb_fname->base_name) {
+		full_path = resolve_mkdir_path(handle, dirfsp, smb_fname);
+		if (full_path) {
+			log_operation(handle, full_path, "MkDir");
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static int file_logger_symlinkat(vfs_handle_struct *handle,
@@ -719,8 +761,21 @@ static int file_logger_symlinkat(vfs_handle_struct *handle,
 				 struct files_struct *dirfsp,
 				 const struct smb_filename *new_smb_fname)
 {
-	return SMB_VFS_NEXT_SYMLINKAT(handle, link_contents, dirfsp,
-				      new_smb_fname);
+	int result;
+	char *full_path = NULL;
+
+	result = SMB_VFS_NEXT_SYMLINKAT(handle, link_contents, dirfsp,
+					new_smb_fname);
+
+	if (new_smb_fname && new_smb_fname->base_name) {
+		full_path = resolve_path(handle, dirfsp, new_smb_fname);
+		if (full_path) {
+			log_operation(handle, full_path, "SymlinkCreate");
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static int file_logger_readlinkat(vfs_handle_struct *handle,
@@ -729,8 +784,21 @@ static int file_logger_readlinkat(vfs_handle_struct *handle,
 				  char *buf,
 				  size_t bufsiz)
 {
-	return SMB_VFS_NEXT_READLINKAT(handle, dirfsp, smb_fname,
-				       buf, bufsiz);
+	int result;
+	char *full_path = NULL;
+
+	result = SMB_VFS_NEXT_READLINKAT(handle, dirfsp, smb_fname,
+					 buf, bufsiz);
+
+	if (smb_fname && smb_fname->base_name) {
+		full_path = resolve_path(handle, dirfsp, smb_fname);
+		if (full_path) {
+			log_operation(handle, full_path, "SymlinkRead");
+			TALLOC_FREE(full_path);
+		}
+	}
+
+	return result;
 }
 
 static struct vfs_fn_pointers vfs_file_logger_fns = {
