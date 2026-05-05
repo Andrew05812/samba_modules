@@ -551,7 +551,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 					char *block_logs_end;
 					logs_start = logs_header + 6;
 					if (after_block && after_block[0] != '\0') {
-						block_logs_end = block_end - 3;
+						block_logs_end = block_end - 2;
 					} else {
 						block_logs_end = existing_content + strlen(existing_content);
 					}
