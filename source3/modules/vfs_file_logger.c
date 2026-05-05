@@ -735,18 +735,23 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
 
 	if (flags & AT_REMOVEDIR) {
 		is_dir = 1;
-	} else if (smb_fname && smb_fname->base_name) {
-		struct smb_filename *full_fname;
-		full_fname = full_path_from_dirfsp_atname(talloc_tos(),
-							   dirfsp, smb_fname);
-		if (full_fname && full_fname->base_name) {
-			struct stat st;
-			if (lstat(full_fname->base_name, &st) == 0 &&
-			    S_ISLNK(st.st_mode)) {
-				is_symlink = 1;
-			}
+	} else if (smb_fname && smb_fname->base_name &&
+		   handle && handle->conn && handle->conn->connectpath) {
+		struct stat st;
+		char *check_path;
+		if (smb_fname->base_name[0] == '/') {
+			check_path = talloc_asprintf(talloc_tos(), "%s",
+						     smb_fname->base_name);
+		} else {
+			check_path = talloc_asprintf(talloc_tos(), "%s/%s",
+						     handle->conn->connectpath,
+						     smb_fname->base_name);
 		}
-		TALLOC_FREE(full_fname);
+		if (check_path && lstat(check_path, &st) == 0 &&
+		    S_ISLNK(st.st_mode)) {
+			is_symlink = 1;
+		}
+		TALLOC_FREE(check_path);
 	}
 
 	result = SMB_VFS_NEXT_UNLINKAT(handle, dirfsp, smb_fname, flags);
