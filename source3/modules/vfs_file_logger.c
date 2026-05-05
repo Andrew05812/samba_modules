@@ -548,11 +548,27 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 				after_block = talloc_strdup(talloc_tos(), block_end);
 
 				if (logs_header) {
+					char *block_logs_end;
 					logs_start = logs_header + 6;
-					new_logs = talloc_asprintf(talloc_tos(),
-								   "LOGS:\n%s%s",
-								   logs_start,
-								   log_entry);
+					if (after_block && after_block[0] != '\0') {
+						block_logs_end = block_end - 3;
+					} else {
+						block_logs_end = existing_content + strlen(existing_content);
+					}
+					if (block_logs_end > logs_start) {
+						char *block_logs = talloc_strndup(talloc_tos(),
+										  logs_start,
+										  block_logs_end - logs_start);
+						new_logs = talloc_asprintf(talloc_tos(),
+									   "LOGS:\n%s%s",
+									   block_logs,
+									   log_entry);
+						TALLOC_FREE(block_logs);
+					} else {
+						new_logs = talloc_asprintf(talloc_tos(),
+									   "LOGS:\n%s",
+									   log_entry);
+					}
 				} else {
 					new_logs = talloc_asprintf(talloc_tos(),
 								   "LOGS:\n%s",
