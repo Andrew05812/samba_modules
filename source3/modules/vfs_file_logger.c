@@ -730,39 +730,43 @@ static int file_logger_unlinkat(vfs_handle_struct *handle,
 {
 	int result;
 	char *full_path = NULL;
-	struct stat st;
 	int is_symlink = 0;
 	int is_dir = 0;
 
-	if (smb_fname && smb_fname->base_name) {
-		full_path = resolve_path(handle, dirfsp, smb_fname);
-		if (full_path) {
-			if (flags & AT_REMOVEDIR) {
-				is_dir = 1;
-			} else if (lstat(full_path, &st) == 0) {
-				if (S_ISLNK(st.st_mode)) {
-					is_symlink = 1;
-				}
+	if (flags & AT_REMOVEDIR) {
+		is_dir = 1;
+	} else if (smb_fname && smb_fname->base_name) {
+		struct smb_filename *full_fname;
+		full_fname = full_path_from_dirfsp_atname(talloc_tos(),
+							   dirfsp, smb_fname);
+		if (full_fname && full_fname->base_name) {
+			struct stat st;
+			if (lstat(full_fname->base_name, &st) == 0 &&
+			    S_ISLNK(st.st_mode)) {
+				is_symlink = 1;
 			}
 		}
+		TALLOC_FREE(full_fname);
 	}
 
 	result = SMB_VFS_NEXT_UNLINKAT(handle, dirfsp, smb_fname, flags);
 
-	if (full_path) {
-		if (is_dir) {
-			log_directory_nested_files(handle, full_path);
-			log_operation(handle, full_path, "DirDelete");
-			remove_file_state(full_path);
-		} else if (is_symlink) {
-			log_operation(handle, full_path, "SymlinkDelete");
-			remove_file_state(full_path);
-		} else if (smb_fname && smb_fname->base_name &&
-			   is_text_file(smb_fname->base_name)) {
-			log_operation(handle, full_path, "Delete");
-			remove_file_state(full_path);
+	if (smb_fname && smb_fname->base_name) {
+		full_path = resolve_path(handle, dirfsp, smb_fname);
+		if (full_path) {
+			if (is_dir) {
+				log_directory_nested_files(handle, full_path);
+				log_operation(handle, full_path, "DirDelete");
+				remove_file_state(full_path);
+			} else if (is_symlink) {
+				log_operation(handle, full_path, "SymlinkDelete");
+				remove_file_state(full_path);
+			} else if (is_text_file(smb_fname->base_name)) {
+				log_operation(handle, full_path, "Delete");
+				remove_file_state(full_path);
+			}
+			TALLOC_FREE(full_path);
 		}
-		TALLOC_FREE(full_path);
 	}
 
 	return result;
