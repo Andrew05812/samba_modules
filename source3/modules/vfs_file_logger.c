@@ -455,7 +455,7 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 				    "datetime=%s\tuser=%s\taction=%s\n",
 				    current_time, user, action);
 
-	DEBUG(0, ("FILE_LOGGER: [pid=%d] %s - %s\n", (int)getpid(), action, filepath));
+	DEBUG(10, ("FILE_LOGGER: %s - %s\n", action, filepath));
 
 	fd = open(log_path, O_RDWR | O_CREAT, 0644);
 	if (fd == -1) {
@@ -507,12 +507,6 @@ static void log_operation(vfs_handle_struct *handle, const char *filepath,
 		}
 		TALLOC_FREE(sep);
 	}
-
-	DEBUG(0, ("FILE_LOGGER: [pid=%d] SEARCH action=%s path=%s block_found=%d content_len=%d content_first100=[%.100s]\n",
-		  (int)getpid(), action, filepath,
-		  block_start ? 1 : 0,
-		  (int)strlen(existing_content),
-		  existing_content));
 
 	if (block_start != NULL) {
 		search_start = block_start + strlen(filepath_line);
